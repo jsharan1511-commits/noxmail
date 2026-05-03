@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nox Mail - Secure Messaging</title>
+    <style>
+        :root {
+            --google-blue: #1a73e8;
+            --google-red: #ea4335;
+            --google-yellow: #fbbc05;
+            --google-green: #34a853;
+            --bg-gray: #f6f8fc;
+            --border: #dadce0;
+        }
+
+        * { box-sizing: border-box; font-family: 'Roboto', sans-serif; }
+        body, html { margin: 0; padding: 0; height: 100%; background: #fff; overflow: hidden; }
+
+        .view { display: none; height: 100vh; width: 100%; }
+        .view.active { display: flex; }
+
+        /* --- LOGIN PAGE --- */
+        #login-view { flex-direction: column; justify-content: center; align-items: center; background: #fff; }
+        .login-card { width: 450px; padding: 48px 40px; border: 1px solid var(--border); border-radius: 8px; text-align: center; }
+        .logo { font-size: 24px; font-weight: 500; margin-bottom: 10px; }
+        .logo span:nth-child(1) { color: var(--google-blue); }
+        .logo span:nth-child(2) { color: var(--google-red); }
+        .logo span:nth-child(3) { color: var(--google-yellow); }
+        .logo span:nth-child(4) { color: var(--google-green); }
+        
+        input[type="text"], input[type="password"], textarea {
+            width: 100%; padding: 13px 15px; margin-bottom: 15px;
+            border: 1px solid var(--border); border-radius: 4px; font-size: 16px;
+        }
+        input:focus { border: 2px solid var(--google-blue); outline: none; }
+
+        .btn-next { background: var(--google-blue); color: white; border: none; padding: 10px 24px; border-radius: 4px; font-weight: 500; cursor: pointer; }
+
+        /* --- DASHBOARD --- */
+        #main-view { flex-direction: row; background: var(--bg-gray); }
+        .sidebar { width: 260px; padding: 20px; border-right: 1px solid var(--border); }
+        .compose-btn { background: #c2e7ff; padding: 16px 24px; border-radius: 16px; cursor: pointer; margin-bottom: 20px; font-weight: 500; display: block; text-align: center; }
+        .nav-item { padding: 12px 20px; border-radius: 0 20px 20px 0; cursor: pointer; font-size: 14px; margin-bottom: 5px; }
+        .nav-item.active { background: #d3e3fd; font-weight: bold; }
+
+        .mail-area { flex: 1; background: white; margin: 15px; border-radius: 16px; border: 1px solid var(--border); display: flex; flex-direction: column; }
+        .mail-row { display: flex; padding: 12px 20px; border-bottom: 1px solid #f1f3f4; cursor: pointer; align-items: center; font-size: 14px; }
+        .mail-row:hover { background: #f8f9fa; }
+        .m-sender { width: 220px; font-weight: bold; }
+
+        /* --- ATTACHMENT DOWNLOAD STYLE --- */
+        .download-pill {
+            display: inline-flex; align-items: center; background: #f1f3f4; 
+            padding: 5px 12px; border-radius: 20px; font-size: 12px; 
+            margin-top: 10px; cursor: pointer; border: 1px solid #ddd;
+        }
+        .download-pill:hover { background: #e8eaed; }
+
+        /* --- MODALS --- */
+        #composer { display: none; position: fixed; bottom: 0; right: 50px; width: 500px; background: white; box-shadow: 0 8px 30px rgba(0,0,0,0.2); border-radius: 8px 8px 0 0; z-index: 100; padding: 20px; }
+    </style>
+</head>
+<body>
+
+    <div id="login-view" class="view active">
+        <div class="login-card">
+            <div class="logo"><span>N</span><span>o</span><span>x</span> <span>Mail</span></div>
+            <h2>Sign in</h2>
+            <input type="text" id="login-email" placeholder="Email">
+            <input type="password" id="login-pass" placeholder="Password">
+            <button class="btn-next" onclick="doLogin()">Next</button>
+        </div>
+    </div>
+
+    <div id="main-view" class="view">
+        <div class="sidebar">
+            <div class="logo" style="font-size:18px"><span>N</span><span>o</span><span>x</span></div>
+            <div class="compose-btn" onclick="openComp()">＋ Compose</div>
+            <div class="nav-item active" id="in-tab" onclick="setTab('inbox')">Inbox</div>
+            <div class="nav-item" id="sent-tab" onclick="setTab('sent')">Sent</div>
+            <p style="font-size:12px; margin-top:50px">User: <b id="user-display"></b></p>
+            <button class="btn-next" style="background:var(--google-red); width:100%" onclick="location.reload()">Logout</button>
+        </div>
+        <div class="mail-area">
+            <div style="padding:20px; font-weight:bold; border-bottom:1px solid #eee">Messages</div>
+            <div id="mail-list" style="overflow-y:auto"></div>
+        </div>
+    </div>
+
+    <div id="composer">
+        <h3>New Message</h3>
+        <input type="text" id="msg-to" placeholder="To (Recipient Email)">
+        <input type="text" id="msg-sub" placeholder="Subject">
+        <textarea id="msg-body" rows="6" placeholder="Message content..."></textarea>
+        <p style="font-size:12px">Attach dummy file data:</p>
+        <input type="file" id="msg-file">
+        <button class="btn-next" onclick="sendMail()" style="width:100%">Send</button>
+        <button class="btn-next" onclick="closeComp()" style="background:#666; width:100%; margin-top:5px">Cancel</button>
+    </div>
+
+    <script>
+        let users = {"sharan0986@nox.com":"0098", "mathi9688@nox.com":"0098", "ronish7742@nox.com":"0098", "dinesh001@nox.com":"0098"};
+        let messages = JSON.parse(localStorage.getItem('nox_v3')) || [];
+        let currentUser = "";
+        let currentTab = "inbox";
+
+        function doLogin() {
+            let e = document.getElementById('login-email').value;
+            let p = document.getElementById('login-pass').value;
+            if(users[e] === p) {
+                currentUser = e;
+                document.getElementById('login-view').classList.remove('active');
+                document.getElementById('main-view').classList.add('active');
+                document.getElementById('user-display').innerText = e;
+                render();
+            } else { alert("Invalid login"); }
+        }
+
+        function render() {
+            let list = document.getElementById('mail-list');
+            list.innerHTML = "";
+            let filtered = messages.filter(m => currentTab === 'inbox' ? m.to === currentUser : m.from === currentUser);
+            
+            filtered.reverse().forEach(m => {
+                let div = document.createElement('div');
+                div.className = 'mail-row';
+                let fileUI = m.fileName ? `<div class="download-pill" onclick="downloadFile('${m.fileName}', '${m.body}')">📥 Download: ${m.fileName}</div>` : "";
+                
+                div.innerHTML = `
+                    <div class="m-sender">${currentTab === 'inbox' ? m.from : 'To: '+m.to}</div>
+                    <div style="flex:1">
+                        <b>${m.sub}</b><br>${m.body.substring(0, 40)}...
+                        ${fileUI}
+                    </div>
+                `;
+                div.onclick = (e) => {
+                    if(!e.target.classList.contains('download-pill')) 
+                        alert(`Full Message:\n\nFrom: ${m.from}\nSub: ${m.sub}\n\n${m.body}`);
+                };
+                list.appendChild(div);
+            });
+        }
+
+        function sendMail() {
+            let to = document.getElementById('msg-to').value;
+            let sub = document.getElementById('msg-sub').value;
+            let body = document.getElementById('msg-body').value;
+            let fileInput = document.getElementById('msg-file');
+            let fName = fileInput.files[0] ? fileInput.files[0].name : null;
+
+            if(!users[to]) return alert("User not found!");
+
+            messages.push({from: currentUser, to: to, sub: sub, body: body, fileName: fName});
+            localStorage.setItem('nox_v3', JSON.stringify(messages));
+            alert("Sent!");
+            closeComp();
+            render();
+        }
+
+        // THE DOWNLOAD LOGIC
+        function downloadFile(name, content) {
+            // This creates a downloadable file from the message text
+            const blob = new Blob([content], { type: 'text/plain' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = name || "attachment.txt";
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+        }
+
+        function setTab(t) {
+            currentTab = t;
+            document.getElementById('in-tab').classList.toggle('active', t==='inbox');
+            document.getElementById('sent-tab').classList.toggle('active', t==='sent');
+            render();
+        }
+
+        function openComp() { document.getElementById('composer').style.display='block'; }
+        function closeComp() { document.getElementById('composer').style.display='none'; }
+    </script>
+</body>
+</html>
